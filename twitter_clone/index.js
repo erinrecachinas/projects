@@ -7,6 +7,9 @@ var fixtures = require('./fixtures')
 
 var app = express()
 
+var bodyParser = require('body-parser')
+var jsonParser = bodyParser.json()
+
 app.get('/api/users/:userId', function(req,res) {
     var userId = req.params.userId
     if(!userId) {
@@ -48,6 +51,74 @@ app.get('/api/tweets', function(req,res) {
     return res.send({
         tweets: sortedTweets
     })
+})
+
+/*
+POST /api/users
+
+with JSON message body:
+
+{ "user": {
+    "id": "peter",
+    "name": "Peter Thiel",
+    "email": "peter@thiel.com",
+    "password": "investor"
+  }
+}
+returns
+
+{
+  id: 'peter',
+  name: 'Peter Thiel',
+  email: 'peter@thiel.com',
+  password: 'investor',
+  followingIds: []
+}
+
+app.post('/api/users', function(req, res) {
+  var user = req.body.user
+
+  if (_.find(fixtures.users, 'id', user.id)) {
+    return res.sendStatus(409)
+  }
+
+  user.followingIds = []
+  fixtures.users.push(user)
+
+  res.sendStatus(200)
+})
+*/
+app.use(jsonParser)
+
+app.post('/api/users', function(req,res) {
+    if (!req.body || !req.body.user) return res.sendStatus(400)
+    else {
+        var users = fixtures.users
+        var newUser = req.body.user
+        var existingUser = users.filter(function(user) {
+            return newUser.id === user.id
+        })
+        if(existingUser.length > 0) {
+            return res.sendStatus(409)
+        } else {
+            var addUser = {id: newUser.id, name: newUser.name, email: newUser.email, password: newUser.password, followingIds:[]}
+            users.push(addUser)
+            res.sendStatus(200)
+        }
+    }
+})
+var shortId = require('shortid')
+app.post('/api/tweets', function(req,res) {
+    if(!req.body || !req.body.tweet) return res.sendStatus(400)
+    else {
+        var tweets = fixtures.tweets
+        var uniqueId = shortId.generate()
+        var newTweet = req.body.tweet;
+        newTweet.id = uniqueId
+        newTweet.created = Math.round((new Date()).getTime() / 1000)
+        tweets.push(newTweet)
+        res.status(200).send(req.body)
+    }
 })
 
 var server = app.listen(3000, '127.0.0.1')
