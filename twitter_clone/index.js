@@ -53,6 +53,30 @@ app.get('/api/tweets', function(req,res) {
     })
 })
 
+app.get('/api/tweets/:tweetId', function(req, res) {
+    var tweetId = req.params.tweetId
+    if(!tweetId) return res.sendStatus(400)
+    var tweets = fixtures.tweets.filter(
+        function(tweet) {
+            return tweet.id === tweetId
+        }
+    )
+    if(tweets.length === 0) {
+        return res.sendStatus(404)
+    }
+    return res.status(200).send({tweet: tweets[0]})
+})
+var _ = require('lodash')
+app.delete('/api/tweets/:tweetId', function(req, res) {
+    var removedTweets = _.remove(fixtures.tweets, 'id', req.params.tweetId)
+
+    if (removedTweets.length == 0) {
+        return res.sendStatus(404)
+    }
+
+    res.sendStatus(200)
+})
+
 /*
 POST /api/users
 
