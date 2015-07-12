@@ -8,7 +8,22 @@ var fixtures = require('./fixtures')
 var app = express()
 
 var bodyParser = require('body-parser')
+
+var cookieParser = require('cookie-parser')
+var session  = require('express-session')
+var passport = require('./auth')
 var jsonParser = bodyParser.json()
+
+app.use(jsonParser)
+app.use(cookieParser())
+app.use(session({
+  secret: 'keyboard cat',
+  resave: false,
+  saveUninitialized: true
+}))
+
+app.use(passport.initialize())
+app.use(passport.session())
 
 app.get('/api/users/:userId', function(req,res) {
     var userId = req.params.userId
@@ -65,55 +80,36 @@ app.get('/api/tweets/:tweetId', function(req, res) {
         return res.sendStatus(404)
     }
     return res.status(200).send({tweet: tweets[0]})
-})
-var _ = require('lodash')
-app.delete('/api/tweets/:tweetId', function(req, res) {
-    var removedTweets = _.remove(fixtures.tweets, 'id', req.params.tweetId)
+});
 
+function ensureAuthentication(req, res, next) {
+    if(!req.isAuthenticated()) {
+        return res.sendStatus(403);
+    } else {
+        return next();
+    }
+}
+
+var _ = require('lodash')
+app.delete('/api/tweets/:tweetId', ensureAuthentication, function(req, res) {
+    var tweetId = req.params.tweetId;
+    var removedTweets = fixtures.tweets.filter(
+        function(tweet) {
+            return tweet.id === tweetId
+        }
+    );
     if (removedTweets.length == 0) {
         return res.sendStatus(404)
     }
-
+    if (removedTweets[0].userId !== req.user.id) {
+        return res.sendStatus(403)
+    }
+    var index = fixtures.tweets.indexOf(removedTweets[0]);
+    fixtures.tweets.splice(index, 1);
     res.sendStatus(200)
 })
 
-/*
-POST /api/users
-
-with JSON message body:
-
-{ "user": {
-    "id": "peter",
-    "name": "Peter Thiel",
-    "email": "peter@thiel.com",
-    "password": "investor"
-  }
-}
-returns
-
-{
-  id: 'peter',
-  name: 'Peter Thiel',
-  email: 'peter@thiel.com',
-  password: 'investor',
-  followingIds: []
-}
-
-app.post('/api/users', function(req, res) {
-  var user = req.body.user
-
-  if (_.find(fixtures.users, 'id', user.id)) {
-    return res.sendStatus(409)
-  }
-
-  user.followingIds = []
-  fixtures.users.push(user)
-
-  res.sendStatus(200)
-})
-*/
-app.use(jsonParser)
-
+ 
 app.post('/api/users', function(req,res) {
     if (!req.body || !req.body.user) return res.sendStatus(400)
     else {
@@ -127,23 +123,50 @@ app.post('/api/users', function(req,res) {
         } else {
             var addUser = {id: newUser.id, name: newUser.name, email: newUser.email, password: newUser.password, followingIds:[]}
             users.push(addUser)
-            res.sendStatus(200)
+            req.login(addUser, function(err) {
+                if(err) {
+                    return res.sendStatus(500);
+                }
+                res.sendStatus(200)
+            })
+            
         }
     }
-})
+});
 var shortId = require('shortid')
-app.post('/api/tweets', function(req,res) {
+app.post('/api/tweets', ensureAuthentication, function(req,res) {
     if(!req.body || !req.body.tweet) return res.sendStatus(400)
     else {
+        if(!req.user.id) {
+            return res.sendStatus(403)
+        }
         var tweets = fixtures.tweets
         var uniqueId = shortId.generate()
         var newTweet = req.body.tweet;
         newTweet.id = uniqueId
         newTweet.created = Math.round((new Date()).getTime() / 1000)
+        newTweet.userId = req.user.id;
         tweets.push(newTweet)
         res.status(200).send(req.body)
     }
-})
+});
+
+
+app.post('/api/auth/login', function(req, res, next) {
+    passport.authenticate('local', function(err, user, info) {
+    if (err) { return res.sendStatus(500); }
+    if (!user) { return res.sendStatus(403); }
+    req.logIn(user, function(err) {
+      if (err) { return res.sendStatus(403) }
+      return res.status(200).send({"user": user});
+    });
+  })(req, res, next);
+});
+
+app.post('/api/auth/logout', function(req, res, next) {
+    req.logout();
+    res.sendStatus(200)
+}) 
 
 var server = app.listen(3000, '127.0.0.1')
 
