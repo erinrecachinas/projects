@@ -14,6 +14,10 @@ var session  = require('express-session')
 var passport = require('./auth')
 var jsonParser = bodyParser.json()
 
+var conn = require('./db'),
+    User = conn.model('User'),
+    Tweet = conn.model('Tweet');
+
 app.use(jsonParser)
 app.use(cookieParser())
 app.use(session({
@@ -113,26 +117,24 @@ app.delete('/api/tweets/:tweetId', ensureAuthentication, function(req, res) {
 app.post('/api/users', function(req,res) {
     if (!req.body || !req.body.user) return res.sendStatus(400)
     else {
-        var users = fixtures.users
         var newUser = req.body.user
-        var existingUser = users.filter(function(user) {
-            return newUser.id === user.id
-        })
-        if(existingUser.length > 0) {
-            return res.sendStatus(409)
-        } else {
-            var addUser = {id: newUser.id, name: newUser.name, email: newUser.email, password: newUser.password, followingIds:[]}
-            users.push(addUser)
-            req.login(addUser, function(err) {
-                if(err) {
-                    return res.sendStatus(500);
-                }
-                res.sendStatus(200)
-            })
-            
-        }
+        var addUser = new User({id: newUser.id, name: newUser.name, email: newUser.email, password: newUser.password, followingIds:[]});
+        addUser.save(function(err) {
+            if(err) { 
+                var code = err.code === 11000 ? 409 : 500;
+                return res.sendStatus(code); 
+            } else {
+                req.login(addUser, function(err) {
+                    if(err) {
+                        return res.sendStatus(500);
+                    }
+                    res.sendStatus(200)
+                });
+            }
+        });
     }
 });
+
 var shortId = require('shortid')
 app.post('/api/tweets', ensureAuthentication, function(req,res) {
     if(!req.body || !req.body.tweet) return res.sendStatus(400)
@@ -168,6 +170,8 @@ app.post('/api/auth/logout', function(req, res, next) {
     res.sendStatus(200)
 }) 
 
-var server = app.listen(3000, '127.0.0.1')
+var config = require('./config')
+
+var server = app.listen(config.get('server:port'), config.get('server:host'));
 
 module.exports = server
